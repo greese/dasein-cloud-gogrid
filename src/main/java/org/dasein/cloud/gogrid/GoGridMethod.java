@@ -43,9 +43,11 @@ import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.Properties;
 
 /**
@@ -60,9 +62,16 @@ public class GoGridMethod {
         private String key;
         private String value;
 
-        public Param(@Nonnull String key, @Nonnull String value) {
+        public Param(@Nonnull String key, @Nonnull String value) throws InternalException {
             this.key = key;
-            this.value = value;
+            try {
+                this.value = URLEncoder.encode(value, "utf-8");
+            }
+            catch( UnsupportedEncodingException e ) {
+                logger.error("UTF-8 unsupported: " + e.getMessage());
+                e.printStackTrace();
+                throw new InternalException(e);
+            }
         }
 
         public @Nonnull String getKey() {
@@ -74,7 +83,18 @@ public class GoGridMethod {
         }
     }
 
-    static public final String LOOKUP_LIST = "/api/common/lookup/list";
+    static public final String IMAGE_DELETE   = "/api/grid/image/delete";
+    static public final String IMAGE_EDIT     = "/api/grid/image/edit";
+    static public final String IMAGE_GET      = "/api/grid/image/get";
+    static public final String IMAGE_LIST     = "/api/grid/image/list";
+    static public final String IMAGE_SAVE     = "/api/grid/image/save";
+    static public final String IP_LIST        = "/api/grid/ip/list";
+    static public final String LOOKUP_LIST    = "/api/common/lookup/list";
+    static public final String SERVER_ADD     = "/api/grid/server/add";
+    static public final String SERVER_DELETE  = "/api/grid/server/delete";
+    static public final String SERVER_GET     = "/api/grid/server/get";
+    static public final String SERVER_LIST    = "/api/grid/server/list";
+    static public final String SERVER_POWER   = "/api/grid/server/power";
 
     static public final String VERSION = "1.9";
 
@@ -112,13 +132,13 @@ public class GoGridMethod {
 
     public GoGridMethod(@Nonnull GoGrid provider) { this.provider = provider; }
 
-    private @Nullable Object doGet(boolean asList, @Nonnull String service, @Nullable Param ... params) throws CloudException, InternalException {
+    public @Nullable JSONArray get(@Nonnull String service, @Nullable Param ... params) throws CloudException, InternalException {
         if( logger.isTraceEnabled() ) {
-            logger.trace("ENTER - " + GoGrid.class.getName() + ".doGet(" + service + "," + Arrays.toString(params) + ")");
+            logger.trace("ENTER - " + GoGrid.class.getName() + ".get(" + service + "," + Arrays.toString(params) + ")");
         }
         if( wire.isDebugEnabled() ) {
             wire.debug("");
-            wire.debug(">>> [GET/" + asList + "] -> " + service + " >--------------------------------------------------------------------------------------");
+            wire.debug(">>> [GET (" + (new Date()) + "] -> " + service + " >--------------------------------------------------------------------------------------");
         }
         try {
             ProviderContext ctx = provider.getContext();
@@ -136,14 +156,21 @@ public class GoGridMethod {
                 throw new InternalException("UTF-8 not supported");
             }
             String endpoint = getEndpoint(ctx, service);
+
+            if( logger.isDebugEnabled() ) {
+                logger.debug("endpoint=" + endpoint);
+            }
             String signature = sign(ctx);
 
-            String paramString = "?v=" + VERSION + "&api_key=" + key + "&sig=" + signature;
+            String paramString = "?format=json&v=" + VERSION + "&api_key=" + key + "&sig=" + signature;
 
             if( params != null && params.length > 0 ) {
                 for( Param p : params ) {
                     paramString = paramString + "&" + p.getKey() + "=" + p.getValue();
                 }
+            }
+            if( logger.isDebugEnabled() ) {
+                logger.debug("Param string=" + paramString);
             }
             HttpGet get = new HttpGet(endpoint + paramString);
             HttpClient client = getClient(ctx, endpoint.startsWith("https"));
@@ -194,19 +221,19 @@ public class GoGridMethod {
                 try {
                     JSONObject r = new JSONObject(json);
 
-                    if( asList && r.has("list") ) {
-                        return r.getJSONArray("list");
-                    }
-                    else if( !asList ) {
-                        return r;
-                    }
-                    return null;
+                    return r.getJSONArray("list");
                 }
                 catch( JSONException e ) {
                     logger.error("Invalid JSON from cloud: " + e.getMessage());
                     e.printStackTrace();
                     throw new CloudException(e);
                 }
+            }
+            else if( status == HttpServletResponse.SC_NOT_FOUND ) {
+                return null;
+            }
+            else if( status == 400 && service.endsWith("get") ) {
+                return null;
             }
             throw new GoGridException(new GoGridException.ParsedException(response));
         }
@@ -215,18 +242,10 @@ public class GoGridMethod {
                 logger.trace("EXIT - " + GoGridMethod.class.getName() + ".doGet()");
             }
             if( wire.isDebugEnabled() ) {
-                wire.debug("<<< [GET/" + asList + "] -> " + service + " <--------------------------------------------------------------------------------------");
+                wire.debug("<<< [GET (" + (new Date()) + "] -> " + service + " <--------------------------------------------------------------------------------------");
                 wire.debug("");
             }
         }
-    }
-
-    public @Nullable JSONObject get(@Nonnull String service, @Nullable Param ... params) throws CloudException, InternalException {
-        return (JSONObject)doGet(false, service, params);
-    }
-
-    public @Nullable JSONArray list(@Nonnull String service, @Nullable Param ... params) throws CloudException, InternalException {
-        return (JSONArray)doGet(true, service, params);
     }
 
     private @Nonnull HttpClient getClient(@Nonnull ProviderContext ctx, boolean ssl) {
@@ -279,11 +298,15 @@ public class GoGridMethod {
         try {
             String toSign = (new String(publicKey, "utf-8")) + (new String(privateKey, "utf-8")) + (System.currentTimeMillis()/1000);
 
-            logger.info("String to sign=" + toSign);
+            if( logger.isDebugEnabled() ) {
+                logger.debug("String to sign=" + toSign);
+            }
 
             String signature = stupidPHPMD5(toSign);
 
-            logger.info("Signature=" + signature);
+            if( logger.isDebugEnabled() ) {
+                logger.debug("Signature=" + signature);
+            }
             return signature;
         }
         catch( UnsupportedEncodingException e ) {

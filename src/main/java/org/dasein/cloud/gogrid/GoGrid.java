@@ -20,6 +20,9 @@ import org.apache.log4j.Logger;
 import org.dasein.cloud.AbstractCloud;
 import org.dasein.cloud.CloudException;
 import org.dasein.cloud.ProviderContext;
+import org.dasein.cloud.compute.Architecture;
+import org.dasein.cloud.gogrid.compute.GoGridCompute;
+import org.dasein.cloud.gogrid.network.GoGridNetworking;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -73,8 +76,18 @@ public class GoGrid extends AbstractCloud {
     }
 
     @Override
+    public @Nonnull GoGridCompute getComputeServices() {
+        return new GoGridCompute(this);
+    }
+
+    @Override
     public @Nonnull GoGridDC getDataCenterServices() {
         return new GoGridDC(this);
+    }
+
+    @Override
+    public @Nonnull GoGridNetworking getNetworkServices() {
+        return new GoGridNetworking(this);
     }
 
     @Override
@@ -90,7 +103,7 @@ public class GoGrid extends AbstractCloud {
         try {
             GoGridMethod method = new GoGridMethod(this);
 
-            if( method.list(GoGridMethod.LOOKUP_LIST, new GoGridMethod.Param("lookup", "datacenter")) == null ) {
+            if( method.get(GoGridMethod.LOOKUP_LIST, new GoGridMethod.Param("lookup", "datacenter")) == null ) {
                 return null;
             }
             ProviderContext ctx = getContext();
@@ -110,5 +123,21 @@ public class GoGrid extends AbstractCloud {
             t.printStackTrace();
             return null;
         }
+    }
+
+    public @Nonnull Architecture toArchitecture(@Nonnull String name) {
+        if( name.contains("_32_") ) {
+            return Architecture.I32;
+        }
+        else if( name.contains("_64_") ) {
+            return Architecture.I64;
+        }
+        else if( name.contains("64") ) {
+            return Architecture.I64;
+        }
+        else if( name.contains("32") ) {
+            return Architecture.I32;
+        }
+        return Architecture.I64;
     }
 }

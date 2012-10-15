@@ -22,6 +22,7 @@ import org.apache.http.util.EntityUtils;
 import org.apache.log4j.Logger;
 import org.dasein.cloud.CloudErrorType;
 import org.dasein.cloud.CloudException;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -64,7 +65,20 @@ public class GoGridException extends CloudException {
                     try {
                         JSONObject ob = new JSONObject(json);
 
-                        // TODO: parse this
+                        if( ob.has("list") ) {
+                            JSONArray list = ob.getJSONArray("list");
+
+                            if( list != null && list.length() > 0 ) {
+                                JSONObject error = list.getJSONObject(0);
+
+                                if( error.has("message") ) {
+                                    message = error.getString("message");
+                                }
+                                if( error.has("errorcode") ) {
+                                    providerCode = error.getString("errorcode");
+                                }
+                            }
+                        }
                     }
                     catch( JSONException ignore ) {
                         // ignore parsing errors, probably html or xml
