@@ -521,8 +521,9 @@ public class GoGridServerSupport implements VirtualMachineSupport {
             if( vm == null || vm.getCurrentState().equals(VmState.TERMINATED) ) {
                 return;
             }
+            try { Thread.sleep(15000L); }
+            catch( InterruptedException ignore ) { }
         }
-        return;
     }
 
     @Override
