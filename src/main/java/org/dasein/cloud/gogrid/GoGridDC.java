@@ -112,6 +112,7 @@ public class GoGridDC implements DataCenterServices {
         }
         GoGridMethod method = new GoGridMethod(provider);
 
+        method.get(GoGridMethod.LOOKUP_LIST, new GoGridMethod.Param("lookup", "loadbalancer.type"));
         JSONArray regionList = method.get(GoGridMethod.LOOKUP_LIST, new GoGridMethod.Param("lookup", "datacenter"));
 
         if( regionList == null ) {

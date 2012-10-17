@@ -513,6 +513,16 @@ public class GoGridServerSupport implements VirtualMachineSupport {
         GoGridMethod method = new GoGridMethod(provider);
 
         method.get(GoGridMethod.SERVER_DELETE, new GoGridMethod.Param("id", vmId));
+        long timeout = System.currentTimeMillis() + (CalendarWrapper.MINUTE * 15L);
+
+        while( timeout > System.currentTimeMillis() ) {
+            VirtualMachine vm = getVirtualMachine(vmId);
+
+            if( vm == null || vm.getCurrentState().equals(VmState.TERMINATED) ) {
+                return;
+            }
+        }
+        return;
     }
 
     @Override

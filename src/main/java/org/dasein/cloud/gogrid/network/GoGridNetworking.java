@@ -18,8 +18,10 @@ package org.dasein.cloud.gogrid.network;
 
 import org.dasein.cloud.gogrid.GoGrid;
 import org.dasein.cloud.gogrid.network.ip.GoGridIPSupport;
+import org.dasein.cloud.gogrid.network.lb.GoGridLBSupport;
 import org.dasein.cloud.network.AbstractNetworkServices;
 import org.dasein.cloud.network.IpAddressSupport;
+import org.dasein.cloud.network.LoadBalancerSupport;
 
 import javax.annotation.Nonnull;
 
@@ -39,4 +41,10 @@ public class GoGridNetworking extends AbstractNetworkServices {
     public @Nonnull IpAddressSupport getIpAddressSupport() {
         return new GoGridIPSupport(provider);
     }
+
+    @Override
+    public @Nonnull LoadBalancerSupport getLoadBalancerSupport() {
+        return new GoGridLBSupport(provider);
+    }
 }
+

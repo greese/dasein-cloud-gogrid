@@ -83,18 +83,23 @@ public class GoGridMethod {
         }
     }
 
-    static public final String IMAGE_DELETE   = "/api/grid/image/delete";
-    static public final String IMAGE_EDIT     = "/api/grid/image/edit";
-    static public final String IMAGE_GET      = "/api/grid/image/get";
-    static public final String IMAGE_LIST     = "/api/grid/image/list";
-    static public final String IMAGE_SAVE     = "/api/grid/image/save";
-    static public final String IP_LIST        = "/api/grid/ip/list";
-    static public final String LOOKUP_LIST    = "/api/common/lookup/list";
-    static public final String SERVER_ADD     = "/api/grid/server/add";
-    static public final String SERVER_DELETE  = "/api/grid/server/delete";
-    static public final String SERVER_GET     = "/api/grid/server/get";
-    static public final String SERVER_LIST    = "/api/grid/server/list";
-    static public final String SERVER_POWER   = "/api/grid/server/power";
+    static public final String IMAGE_DELETE      = "/api/grid/image/delete";
+    static public final String IMAGE_EDIT        = "/api/grid/image/edit";
+    static public final String IMAGE_GET         = "/api/grid/image/get";
+    static public final String IMAGE_LIST        = "/api/grid/image/list";
+    static public final String IMAGE_SAVE        = "/api/grid/image/save";
+    static public final String IP_LIST           = "/api/grid/ip/list";
+    static public final String LB_ADD            = "/api/grid/loadbalancer/add";
+    static public final String LB_DELETE         = "/api/grid/loadbalancer/delete";
+    static public final String LB_EDIT           = "/api/grid/loadbalancer/edit";
+    static public final String LB_GET            = "/api/grid/loadbalancer/get";
+    static public final String LB_LIST           = "/api/grid/loadbalancer/list";
+    static public final String LOOKUP_LIST       = "/api/common/lookup/list";
+    static public final String SERVER_ADD        = "/api/grid/server/add";
+    static public final String SERVER_DELETE     = "/api/grid/server/delete";
+    static public final String SERVER_GET        = "/api/grid/server/get";
+    static public final String SERVER_LIST       = "/api/grid/server/list";
+    static public final String SERVER_POWER      = "/api/grid/server/power";
 
     static public final String VERSION = "1.9";
 
@@ -138,7 +143,7 @@ public class GoGridMethod {
         }
         if( wire.isDebugEnabled() ) {
             wire.debug("");
-            wire.debug(">>> [GET (" + (new Date()) + "] -> " + service + " >--------------------------------------------------------------------------------------");
+            wire.debug(">>> [GET (" + (new Date()) + ")] -> " + service + " >--------------------------------------------------------------------------------------");
         }
         try {
             ProviderContext ctx = provider.getContext();
@@ -242,7 +247,7 @@ public class GoGridMethod {
                 logger.trace("EXIT - " + GoGridMethod.class.getName() + ".doGet()");
             }
             if( wire.isDebugEnabled() ) {
-                wire.debug("<<< [GET (" + (new Date()) + "] -> " + service + " <--------------------------------------------------------------------------------------");
+                wire.debug("<<< [GET (" + (new Date()) + ")] -> " + service + " <--------------------------------------------------------------------------------------");
                 wire.debug("");
             }
         }

@@ -21,7 +21,6 @@ import org.dasein.cloud.CloudException;
 import org.dasein.cloud.InternalException;
 import org.dasein.cloud.OperationNotSupportedException;
 import org.dasein.cloud.ProviderContext;
-import org.dasein.cloud.compute.VirtualMachine;
 import org.dasein.cloud.gogrid.GoGrid;
 import org.dasein.cloud.gogrid.GoGridMethod;
 import org.dasein.cloud.identity.ServiceAction;
@@ -206,14 +205,16 @@ public class GoGridIPSupport implements IpAddressSupport {
                 return Collections.emptyList();
             }
             ArrayList<IpAddress> addresses = new ArrayList<IpAddress>();
-            Iterable<VirtualMachine> vms = null;
+            JSONArray vmList = null;
+            JSONArray lbList = null;
 
             if( !unassignedOnly ) {
-                vms = provider.getComputeServices().getVirtualMachineSupport().listVirtualMachines();
+                vmList = method.get(GoGridMethod.SERVER_LIST);
+                lbList = method.get(GoGridMethod.LB_LIST);
             }
             for( int i=0; i<list.length(); i++ ) {
                 try {
-                    IpAddress ip = toAddress(list.getJSONObject(i), vms);
+                    IpAddress ip = toAddress(list.getJSONObject(i), vmList, lbList);
 
                     if( ip != null ) {
                         addresses.add(ip);
@@ -280,7 +281,7 @@ public class GoGridIPSupport implements IpAddressSupport {
         return new String[0];
     }
 
-    private @Nullable IpAddress toAddress(@Nullable JSONObject json, @Nullable Iterable<VirtualMachine> vmList) throws CloudException, InternalException {
+    private @Nullable IpAddress toAddress(@Nullable JSONObject json, @Nullable JSONArray vmList, @Nullable JSONArray lbList) throws CloudException, InternalException {
         if( json == null ) {
             return null;
         }
@@ -309,18 +310,40 @@ public class GoGridIPSupport implements IpAddressSupport {
                 if( state.has("id") ) {
                     int s = state.getInt("id");
 
-                    if( s != 1 && (vmList == null) ) {
+                    if( s != 1 && (vmList == null || lbList == null) ) {
                         return null;
                     }
                     else if( s == 2 ) {
-                        for( VirtualMachine vm : vmList ) {
-                            if( address.getProviderIpAddressId().equals(vm.getProviderAssignedIpAddressId()) ) {
-                                address.setServerId(vm.getProviderVirtualMachineId());
-                                break;
+                        for( int i =0; i<vmList.length(); i++ ) {
+                            JSONObject vm = vmList.getJSONObject(i);
+
+                            if( !vm.has("id") ) {
+                                continue;
+                            }
+                            if( vm.has("ip") ) {
+                                JSONObject ip = vm.getJSONObject("ip");
+
+                                if( ip.has("id") && ip.getString("id").equals(address.getProviderIpAddressId()) ) {
+                                    address.setServerId(vm.getString("id"));
+                                }
                             }
                         }
                         if( address.getServerId() == null ) {
-                            // TODO: check load balancers
+                            for( int i=0; i<lbList.length(); i++ ) {
+                                JSONObject lb = lbList.getJSONObject(i);
+
+                                if( !lb.has("id") ) {
+                                    continue;
+                                }
+                                if( lb.has("virtualip.ip") ) {
+                                    JSONObject ip = lb.getJSONObject("virtualip.ip");
+
+
+                                    if( ip.has("id") && ip.getString("id").equals(address.getProviderIpAddressId()) ) {
+                                        address.setProviderLoadBalancerId(lb.getString("id"));
+                                    }
+                                }
+                            }
                         }
                     }
                 }
