@@ -21,11 +21,15 @@ package org.dasein.cloud.gogrid.compute.image;
 import org.apache.log4j.Logger;
 import org.dasein.cloud.AsynchronousTask;
 import org.dasein.cloud.CloudException;
-import org.dasein.cloud.CloudProvider;
 import org.dasein.cloud.InternalException;
 import org.dasein.cloud.OperationNotSupportedException;
 import org.dasein.cloud.ProviderContext;
+import org.dasein.cloud.Requirement;
+import org.dasein.cloud.ResourceStatus;
+import org.dasein.cloud.Tag;
 import org.dasein.cloud.compute.Architecture;
+import org.dasein.cloud.compute.ImageClass;
+import org.dasein.cloud.compute.ImageCreateOptions;
 import org.dasein.cloud.compute.MachineImage;
 import org.dasein.cloud.compute.MachineImageFormat;
 import org.dasein.cloud.compute.MachineImageState;
@@ -33,17 +37,18 @@ import org.dasein.cloud.compute.MachineImageSupport;
 import org.dasein.cloud.compute.MachineImageType;
 import org.dasein.cloud.compute.Platform;
 
+import org.dasein.cloud.compute.VirtualMachine;
+import org.dasein.cloud.compute.VmState;
 import org.dasein.cloud.gogrid.GoGrid;
 import org.dasein.cloud.gogrid.GoGridMethod;
 import org.dasein.cloud.identity.ServiceAction;
+import org.dasein.util.CalendarWrapper;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Locale;
@@ -62,11 +67,6 @@ public class GoGridImageSupport implements MachineImageSupport {
 
     public GoGridImageSupport(GoGrid provider) { this.provider = provider; }
 
-    @Override
-    public void downloadImage(@Nonnull String machineImageId, @Nonnull OutputStream toOutput) throws CloudException, InternalException {
-        throw new OperationNotSupportedException("You cannot currently download machine images from GoGrid");
-    }
-
     private @Nonnull ProviderContext getContext() throws CloudException {
         ProviderContext ctx = provider.getContext();
 
@@ -77,10 +77,130 @@ public class GoGridImageSupport implements MachineImageSupport {
     }
 
     @Override
-    public MachineImage getMachineImage(@Nonnull String machineImageId) throws CloudException, InternalException {
+    public void addImageShare(@Nonnull String providerImageId, @Nonnull String accountNumber) throws CloudException, InternalException {
+        throw new OperationNotSupportedException("Image sharing is not supported");
+    }
+
+    @Override
+    public void addPublicShare(@Nonnull String providerImageId) throws CloudException, InternalException {
         GoGridMethod method = new GoGridMethod(provider);
 
-        JSONArray list = method.get(GoGridMethod.IMAGE_GET, new GoGridMethod.Param("image", machineImageId));
+        method.get(GoGridMethod.IMAGE_EDIT, new GoGridMethod.Param("id", providerImageId), new GoGridMethod.Param("isPublic", "true"));
+    }
+
+    @Override
+    public @Nonnull String bundleVirtualMachine(@Nonnull String virtualMachineId, @Nonnull MachineImageFormat format, @Nonnull String bucket, @Nonnull String name) throws CloudException, InternalException {
+        throw new OperationNotSupportedException("Image bundling is not supported");
+    }
+
+    @Override
+    public void bundleVirtualMachineAsync(@Nonnull String virtualMachineId, @Nonnull MachineImageFormat format, @Nonnull String bucket, @Nonnull String name, @Nonnull AsynchronousTask<String> trackingTask) throws CloudException, InternalException {
+        throw new OperationNotSupportedException("Image bundling is not supported");
+    }
+
+    @Override
+    public @Nonnull MachineImage captureImage(@Nonnull ImageCreateOptions options) throws CloudException, InternalException {
+        ProviderContext ctx = provider.getContext();
+
+        if( ctx == null ) {
+            throw new CloudException("No context was set for this request");
+        }
+        return captureImage(options, null);
+    }
+
+    @Override
+    public void captureImageAsync(final @Nonnull ImageCreateOptions options, final @Nonnull AsynchronousTask<MachineImage> taskTracker) throws CloudException, InternalException {
+        final ProviderContext ctx = provider.getContext();
+        VirtualMachine vm = null;
+
+        long timeout = System.currentTimeMillis() + (CalendarWrapper.MINUTE * 30L);
+
+        while( timeout > System.currentTimeMillis() ) {
+            try {
+                //noinspection ConstantConditions
+                vm = provider.getComputeServices().getVirtualMachineSupport().getVirtualMachine(options.getVirtualMachineId());
+                if( vm == null ) {
+                    break;
+                }
+                if( !vm.isPersistent() ) {
+                    throw new OperationNotSupportedException("You cannot capture instance-backed virtual machines");
+                }
+                if( VmState.RUNNING.equals(vm.getCurrentState()) || VmState.STOPPED.equals(vm.getCurrentState()) ) {
+                    break;
+                }
+            }
+            catch( Throwable ignore ) {
+                // ignore
+            }
+            try { Thread.sleep(15000L); }
+            catch( InterruptedException ignore ) { }
+        }
+        if( vm == null ) {
+            throw new CloudException("No such virtual machine: " + options.getVirtualMachineId());
+        }
+
+        if( ctx == null ) {
+            throw new CloudException("No context was set for this request");
+        }
+        Thread t = new Thread() {
+            public void run() {
+                try {
+                    taskTracker.completeWithResult(captureImage(options, taskTracker));
+                }
+                catch( Throwable t ) {
+                    taskTracker.complete(t);
+                }
+                finally {
+                    provider.release();
+                }
+            }
+        };
+
+        provider.hold();
+        t.setName("Imaging " + options.getVirtualMachineId() + " as " + options.getName());
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private @Nonnull MachineImage captureImage(@Nonnull ImageCreateOptions options, @Nullable AsynchronousTask<MachineImage> task) throws CloudException, InternalException {
+        if( task != null ) {
+            task.setPercentComplete(1);
+        }
+
+        GoGridMethod method = new GoGridMethod(provider);
+        String vmId = options.getVirtualMachineId();
+
+        if( vmId == null ) {
+            throw new CloudException("No VM ID was specified for capture");
+        }
+        JSONArray list = method.get(GoGridMethod.IMAGE_SAVE, new GoGridMethod.Param("server", vmId), new GoGridMethod.Param("friendlyName", options.getName()), new GoGridMethod.Param("description", options.getDescription()));
+
+        if( list == null ) {
+            throw new CloudException("Attempting to image virtual machine but nothing was returned without comment");
+        }
+
+        for( int i=0; i<list.length(); i++ ) {
+            try {
+                MachineImage img = toImage(list.getJSONObject(i));
+
+                if( img != null ) {
+                    return img;
+                }
+            }
+            catch( JSONException e ) {
+                logger.error("Failed to parse JSON: " + e.getMessage());
+                e.printStackTrace();
+                throw new CloudException(e);
+            }
+        }
+        throw new CloudException("Image was captured but no image was returned");
+    }
+
+    @Override
+    public MachineImage getImage(@Nonnull String providerImageId) throws CloudException, InternalException {
+        GoGridMethod method = new GoGridMethod(provider);
+
+        JSONArray list = method.get(GoGridMethod.IMAGE_GET, new GoGridMethod.Param("image", providerImageId));
 
         if( list == null ) {
             return null;
@@ -90,7 +210,7 @@ public class GoGridImageSupport implements MachineImageSupport {
             try {
                 MachineImage img = toImage(list.getJSONObject(i));
 
-                if( img != null && img.getProviderMachineImageId().equals(machineImageId) ) {
+                if( img != null && img.getProviderMachineImageId().equals(providerImageId) ) {
                     return img;
                 }
             }
@@ -104,7 +224,23 @@ public class GoGridImageSupport implements MachineImageSupport {
     }
 
     @Override
+    @Deprecated
+    public MachineImage getMachineImage(@Nonnull String machineImageId) throws CloudException, InternalException {
+        return getImage(machineImageId);
+    }
+
+    @Override
+    @Deprecated
     public @Nonnull String getProviderTermForImage(@Nonnull Locale locale) {
+        return getProviderTermForImage(locale, ImageClass.MACHINE);
+    }
+
+    @Override
+    public @Nonnull String getProviderTermForImage(@Nonnull Locale locale, @Nonnull ImageClass cls) {
+        switch( cls ) {
+            case KERNEL: return "kernel image";
+            case RAMDISK: return "ramdisk image";
+        }
         return "server image";
     }
 
@@ -123,13 +259,30 @@ public class GoGridImageSupport implements MachineImageSupport {
     }
 
     @Override
-    public @Nonnull AsynchronousTask<String> imageVirtualMachine(final String vmId, final String name, final String description) throws CloudException, InternalException {
+    public @Nonnull Requirement identifyLocalBundlingRequirement() throws CloudException, InternalException {
+        return Requirement.NONE;
+    }
+
+    @Override
+    public @Nonnull AsynchronousTask<String> imageVirtualMachine(final String vmId, String name, String description) throws CloudException, InternalException {
+        VirtualMachine vm = provider.getComputeServices().getVirtualMachineSupport().getVirtualMachine(vmId);
+
+        if( vm == null ) {
+            throw new CloudException("No such virtual machine: " + vmId);
+        }
+        if( name == null ) {
+            name = "Image of " + vm.getProviderVirtualMachineId();
+        }
+        if( description == null ) {
+            description = name;
+        }
+        final ImageCreateOptions options = ImageCreateOptions.getInstance(vm, name, description);
         final AsynchronousTask<String> task = new AsynchronousTask<String>();
 
         Thread t = new Thread() {
             public void run() {
                 try {
-                    task.completeWithResult(executeImaging(vmId, name, description));
+                    task.completeWithResult(captureImage(options, null).getProviderMachineImageId());
                 }
                 catch( Throwable t ) {
                     task.complete(t);
@@ -141,48 +294,6 @@ public class GoGridImageSupport implements MachineImageSupport {
         t.setDaemon(true);
         t.start();
         return task;
-    }
-
-    private String executeImaging(String vmId, String name,String description) throws CloudException, InternalException {
-        GoGridMethod method = new GoGridMethod(provider);
-
-        if( name == null ) {
-            name = "Image of " + vmId;
-        }
-        if( description == null ) {
-            description = name;
-        }
-        JSONArray list = method.get(GoGridMethod.IMAGE_SAVE, new GoGridMethod.Param("server", vmId), new GoGridMethod.Param("friendlyName", name), new GoGridMethod.Param("description", description));
-
-        if( list == null ) {
-            return null;
-        }
-
-        for( int i=0; i<list.length(); i++ ) {
-            try {
-                MachineImage img = toImage(list.getJSONObject(i));
-
-                if( img != null ) {
-                    return img.getProviderMachineImageId();
-                }
-            }
-            catch( JSONException e ) {
-                logger.error("Failed to parse JSON: " + e.getMessage());
-                e.printStackTrace();
-                throw new CloudException(e);
-            }
-        }
-        return null;
-    }
-
-    @Override
-    public @Nonnull AsynchronousTask<String> imageVirtualMachineToStorage(String vmId, String name, String description, String directory) throws CloudException, InternalException {
-        throw new OperationNotSupportedException("No ability to image to storage");
-    }
-
-    @Override
-    public @Nonnull String installImageFromUpload(@Nonnull MachineImageFormat format, @Nonnull InputStream imageStream) throws CloudException, InternalException {
-        throw new OperationNotSupportedException("No ability to install images from an existing file");
     }
 
     @Override
@@ -240,7 +351,7 @@ public class GoGridImageSupport implements MachineImageSupport {
     }
 
     @Override
-    public @Nonnull Iterable<MachineImage> listMachineImages() throws CloudException, InternalException {
+    public @Nonnull Iterable<ResourceStatus> listImageStatus(@Nonnull ImageClass cls) throws CloudException, InternalException {
         ProviderContext ctx = getContext();
         String regionId = getRegionId(ctx);
 
@@ -251,13 +362,13 @@ public class GoGridImageSupport implements MachineImageSupport {
         if( list == null ) {
             return Collections.emptyList();
         }
-        ArrayList<MachineImage> images = new ArrayList<MachineImage>();
+        ArrayList<ResourceStatus> images = new ArrayList<ResourceStatus>();
 
         for( int i=0; i<list.length(); i++ ) {
             try {
-                MachineImage img = toImage(list.getJSONObject(i));
+                ResourceStatus img = toStatus(list.getJSONObject(i), false);
 
-                if( img != null && img.getProviderOwnerId() != null ) {
+                if( img != null ) {
                     images.add(img);
                 }
             }
@@ -271,7 +382,7 @@ public class GoGridImageSupport implements MachineImageSupport {
     }
 
     @Override
-    public @Nonnull Iterable<MachineImage> listMachineImagesOwnedBy(String accountId) throws CloudException, InternalException {
+    public @Nonnull Iterable<MachineImage> listImages(@Nonnull ImageClass cls) throws CloudException, InternalException {
         ProviderContext ctx = getContext();
         String regionId = getRegionId(ctx);
 
@@ -288,7 +399,7 @@ public class GoGridImageSupport implements MachineImageSupport {
             try {
                 MachineImage img = toImage(list.getJSONObject(i));
 
-                if( img != null && ((accountId == null && img.getProviderMachineImageId() != null) || (accountId != null && accountId.equals(img.getProviderOwnerId()))) ) {
+                if( img != null && !img.getProviderOwnerId().equals("--gogrid--") ) {
                     images.add(img);
                 }
             }
@@ -299,10 +410,66 @@ public class GoGridImageSupport implements MachineImageSupport {
             }
         }
         return images;
+    }
+
+    @Override
+    public @Nonnull Iterable<MachineImage> listImages(@Nonnull ImageClass cls, @Nonnull String ownedBy) throws CloudException, InternalException {
+        if( !cls.equals(ImageClass.MACHINE) ) {
+            return Collections.emptyList();
+        }
+        ProviderContext ctx = getContext();
+        String regionId = getRegionId(ctx);
+
+        GoGridMethod method = new GoGridMethod(provider);
+
+        JSONArray list = method.get(GoGridMethod.IMAGE_LIST, new GoGridMethod.Param("datacenter", regionId));
+
+        if( list == null ) {
+            return Collections.emptyList();
+        }
+        ArrayList<MachineImage> images = new ArrayList<MachineImage>();
+
+        for( int i=0; i<list.length(); i++ ) {
+            try {
+                MachineImage img = toImage(list.getJSONObject(i));
+
+                if( img != null && ownedBy.equals(img.getProviderOwnerId()) ) {
+                    images.add(img);
+                }
+            }
+            catch( JSONException e ) {
+                logger.error("Failed to parse JSON: " + e.getMessage());
+                e.printStackTrace();
+                throw new CloudException(e);
+            }
+        }
+        return images;
+    }
+
+    @Override
+    @Deprecated
+    public @Nonnull Iterable<MachineImage> listMachineImages() throws CloudException, InternalException {
+        return listImages(ImageClass.MACHINE);
+    }
+
+    @Override
+    @Deprecated
+    public @Nonnull Iterable<MachineImage> listMachineImagesOwnedBy(String accountId) throws CloudException, InternalException {
+        if( accountId == null ) {
+            return listImages(ImageClass.MACHINE);
+        }
+        else {
+            return listImages(ImageClass.MACHINE, accountId);
+        }
     }
 
     @Override
     public @Nonnull Iterable<MachineImageFormat> listSupportedFormats() throws CloudException, InternalException {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public @Nonnull Iterable<MachineImageFormat> listSupportedFormatsForBundling() throws CloudException, InternalException {
         return Collections.emptyList();
     }
 
@@ -312,8 +479,18 @@ public class GoGridImageSupport implements MachineImageSupport {
     }
 
     @Override
-    public @Nonnull String registerMachineImage(String atStorageLocation) throws CloudException, InternalException {
-        throw new OperationNotSupportedException("No registering machine images");
+    public @Nonnull Iterable<ImageClass> listSupportedImageClasses() throws CloudException, InternalException {
+        return Collections.singletonList(ImageClass.MACHINE);
+    }
+
+    @Override
+    public @Nonnull Iterable<MachineImageType> listSupportedImageTypes() throws CloudException, InternalException {
+        return Collections.singletonList(MachineImageType.VOLUME);
+    }
+
+    @Override
+    public @Nonnull MachineImage registerImageBundle(@Nonnull ImageCreateOptions options) throws CloudException, InternalException {
+        throw new OperationNotSupportedException("Bundle registration is not supported");
     }
 
     @Override
@@ -324,7 +501,30 @@ public class GoGridImageSupport implements MachineImageSupport {
     }
 
     @Override
+    public void removeAllImageShares(@Nonnull String providerImageId) throws CloudException, InternalException {
+        throw new OperationNotSupportedException("Image sharing is not supported");
+    }
+
+    @Override
+    public void removeImageShare(@Nonnull String providerImageId, @Nonnull String accountNumber) throws CloudException, InternalException {
+        throw new OperationNotSupportedException("Image sharing is not supported");
+    }
+
+    @Override
+    public void removePublicShare(@Nonnull String providerImageId) throws CloudException, InternalException {
+        GoGridMethod method = new GoGridMethod(provider);
+
+        method.get(GoGridMethod.IMAGE_EDIT, new GoGridMethod.Param("id", providerImageId), new GoGridMethod.Param("isPublic", "false"));
+    }
+
+    @Override
+    @Deprecated
     public @Nonnull Iterable<MachineImage> searchMachineImages(@Nullable String keyword, @Nullable Platform platform, @Nullable Architecture architecture) throws CloudException, InternalException {
+        return searchPublicImages(keyword, platform, architecture);
+    }
+
+    @Override
+    public @Nonnull Iterable<MachineImage> searchImages(@Nullable String accountNumber, @Nullable String keyword, @Nullable Platform platform, @Nullable Architecture architecture, @Nullable ImageClass... imageClasses) throws CloudException, InternalException {
         ProviderContext ctx = getContext();
         String regionId = getRegionId(ctx);
 
@@ -342,7 +542,73 @@ public class GoGridImageSupport implements MachineImageSupport {
                 MachineImage img = toImage(list.getJSONObject(i));
 
                 if( img != null ) {
+                    String ownerId = img.getProviderOwnerId();
 
+                    if( (accountNumber == null && !ownerId.equals("--gogrid--")) || (accountNumber != null && accountNumber.equals(ownerId)) ) {
+                        if( keyword != null ) {
+                            if( !img.getName().toLowerCase().contains(keyword) && !img.getDescription().toLowerCase().contains(keyword) ) {
+                                continue;
+                            }
+                        }
+                        if( platform != null && !platform.equals(Platform.UNKNOWN) ) {
+                            Platform mine = img.getPlatform();
+
+                            if( platform.isWindows() && !mine.isWindows() ) {
+                                continue;
+                            }
+                            if( platform.isUnix() && !mine.isUnix() ) {
+                                continue;
+                            }
+                            if( platform.isBsd() && !mine.isBsd() ) {
+                                continue;
+                            }
+                            if( platform.isLinux() && !mine.isLinux() ) {
+                                continue;
+                            }
+                            if( platform.equals(Platform.UNIX) ) {
+                                if( !mine.isUnix() ) {
+                                    continue;
+                                }
+                            }
+                            else if( !platform.equals(mine) ) {
+                                continue;
+                            }
+                        }
+                        if( architecture != null && !img.getArchitecture().equals(architecture) ) {
+                            continue;
+                        }
+                        images.add(img);
+                    }
+                }
+            }
+            catch( JSONException e ) {
+                logger.error("Failed to parse JSON: " + e.getMessage());
+                e.printStackTrace();
+                throw new CloudException(e);
+            }
+        }
+        return images;
+    }
+
+    @Override
+    public @Nonnull Iterable<MachineImage> searchPublicImages(@Nullable String keyword, @Nullable Platform platform, @Nullable Architecture architecture, @Nullable ImageClass... imageClasses) throws CloudException, InternalException {
+        ProviderContext ctx = getContext();
+        String regionId = getRegionId(ctx);
+
+        GoGridMethod method = new GoGridMethod(provider);
+
+        JSONArray list = method.get(GoGridMethod.IMAGE_LIST, new GoGridMethod.Param("datacenter", regionId));
+
+        if( list == null ) {
+            return Collections.emptyList();
+        }
+        ArrayList<MachineImage> images = new ArrayList<MachineImage>();
+
+        for( int i=0; i<list.length(); i++ ) {
+            try {
+                MachineImage img = toImage(list.getJSONObject(i));
+
+                if( img != null ) {
                     if( keyword != null ) {
                         if( !img.getName().toLowerCase().contains(keyword) && !img.getDescription().toLowerCase().contains(keyword) ) {
                             continue;
@@ -389,18 +655,36 @@ public class GoGridImageSupport implements MachineImageSupport {
     }
 
     @Override
+    @Deprecated
     public void shareMachineImage(@Nonnull String machineImageId, @Nullable String withAccountId, boolean allow) throws CloudException, InternalException {
-        if( withAccountId != null ) {
-            throw new OperationNotSupportedException("Cannot share images with specific accounts");
+        if( withAccountId == null ) {
+            if( allow ) {
+                addPublicShare(machineImageId);
+            }
+            else {
+                removePublicShare(machineImageId);
+            }
         }
-
-        GoGridMethod method = new GoGridMethod(provider);
-
-        method.get(GoGridMethod.IMAGE_EDIT, new GoGridMethod.Param("id", machineImageId), new GoGridMethod.Param("isPublic", allow ? "true" : "false"));
+        else if( allow ) {
+            addImageShare(machineImageId, withAccountId);
+        }
+        else {
+            removeImageShare(machineImageId, withAccountId);
+        }
     }
 
     @Override
     public boolean supportsCustomImages() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsDirectImageUpload() throws CloudException, InternalException {
+        return false;
+    }
+
+    @Override
+    public boolean supportsImageCapture(@Nonnull MachineImageType type) throws CloudException, InternalException {
         return true;
     }
 
@@ -415,8 +699,13 @@ public class GoGridImageSupport implements MachineImageSupport {
     }
 
     @Override
-    public @Nonnull String transfer(@Nonnull CloudProvider fromCloud, @Nonnull String machineImageId) throws CloudException, InternalException {
-        throw new OperationNotSupportedException("No transfering of machine images");
+    public boolean supportsPublicLibrary(@Nonnull ImageClass cls) throws CloudException, InternalException {
+        return true;
+    }
+
+    @Override
+    public void updateTags(@Nonnull String imageId, @Nonnull Tag... tags) throws CloudException, InternalException {
+        // NO-OP
     }
 
     @Override
@@ -432,10 +721,11 @@ public class GoGridImageSupport implements MachineImageSupport {
         String regionId = getRegionId(getContext());
 
         img.setPlatform(Platform.UNKNOWN);
-        img.setType(MachineImageType.STORAGE);
+        img.setType(MachineImageType.VOLUME);
         img.setCurrentState(MachineImageState.PENDING);
         img.setSoftware("");
         img.setProviderRegionId(regionId);
+        img.setImageClass(ImageClass.MACHINE);
         try {
             if( json.has("id") ) {
                 img.setProviderMachineImageId(json.getString("id"));
@@ -528,6 +818,9 @@ public class GoGridImageSupport implements MachineImageSupport {
         if( img.getProviderMachineImageId() == null ) {
             return null;
         }
+        if( img.getProviderOwnerId() == null ) {
+            img.setProviderOwnerId("--gogrid--");
+        }
         if( img.getName() == null ) {
             img.setName(img.getProviderMachineImageId());
         }
@@ -535,5 +828,54 @@ public class GoGridImageSupport implements MachineImageSupport {
             img.setDescription(img.getName());
         }
         return img;
+    }
+
+    private @Nullable ResourceStatus toStatus(@Nullable JSONObject json, boolean includeGoGrid) throws CloudException, InternalException {
+        if( json == null ) {
+            return null;
+        }
+        try {
+            String id;
+
+            if( json.has("id") ) {
+                id = json.getString("id");
+            }
+            else {
+                return null;
+            }
+            if( json.has("owner") && !includeGoGrid ) {
+                JSONObject owner = json.getJSONObject("owner");
+
+                if( owner != null && owner.has("id") ) {
+                    long ownerId = owner.getLong("id");
+
+                    if( ownerId < 1L ) {
+                        return null;
+                    }
+                }
+            }
+            else if( !includeGoGrid ) {
+                return null;
+            }
+            MachineImageState is = MachineImageState.PENDING;
+
+            if( json.has("state") ) {
+                JSONObject state = json.getJSONObject("state");
+
+                if( state.has("id") ) {
+                    switch( state.getInt("id") ) {
+                        case 1: case 7: is = MachineImageState.PENDING; break;
+                        case 2: is = MachineImageState.ACTIVE; break;
+                        case 3: case 4: is = MachineImageState.DELETED; break;
+                    }
+                }
+            }
+            return new ResourceStatus(id, is);
+        }
+        catch( JSONException e ) {
+            logger.error("Failed to process image JSON: " + e.getMessage());
+            e.printStackTrace();
+            throw new CloudException(e);
+        }
     }
 }

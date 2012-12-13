@@ -23,6 +23,7 @@ import org.dasein.cloud.CloudException;
 import org.dasein.cloud.InternalException;
 import org.dasein.cloud.OperationNotSupportedException;
 import org.dasein.cloud.ProviderContext;
+import org.dasein.cloud.ResourceStatus;
 import org.dasein.cloud.compute.VirtualMachine;
 import org.dasein.cloud.gogrid.GoGrid;
 import org.dasein.cloud.gogrid.GoGridMethod;
@@ -297,6 +298,37 @@ public class GoGridLBSupport implements LoadBalancerSupport {
         return "load balancer";
     }
 
+    @Override
+    public Iterable<ResourceStatus> listLoadBalancerStatus() throws CloudException, InternalException {
+        ProviderContext ctx = getContext();
+        String regionId = getRegionId(ctx);
+
+        GoGridMethod method = new GoGridMethod(provider);
+
+        JSONArray list = method.get(GoGridMethod.LB_LIST, new GoGridMethod.Param("datacenter", regionId));
+
+        if( list == null ) {
+            return Collections.emptyList();
+        }
+        ArrayList<ResourceStatus> loadBalancers = new ArrayList<ResourceStatus>();
+
+        for( int i=0; i<list.length(); i++ ) {
+            try {
+                ResourceStatus lb = toStatus(list.getJSONObject(i));
+
+                if( lb != null ) {
+                    loadBalancers.add(lb);
+                }
+            }
+            catch( JSONException e ) {
+                logger.error("Failed to parse JSON: " + e.getMessage());
+                e.printStackTrace();
+                throw new CloudException(e);
+            }
+        }
+        return loadBalancers;
+    }
+
     private @Nonnull String getRegionId(@Nonnull ProviderContext ctx) throws CloudException {
         String regionId = ctx.getRegionId();
 
@@ -463,6 +495,51 @@ public class GoGridLBSupport implements LoadBalancerSupport {
             case 2: return LbAlgorithm.LEAST_CONN;
         }
         return LbAlgorithm.ROUND_ROBIN;
+    }
+
+    private @Nullable ResourceStatus toStatus(@Nullable JSONObject json) throws CloudException, InternalException {
+        if( json == null ) {
+            return null;
+        }
+
+        LoadBalancerState state = null;
+        String loadBalancerId = null;
+
+        try {
+            if( json.has("id") ) {
+                loadBalancerId = json.getString("id");
+            }
+            if( json.has("state") ) {
+                /*
+                {"id":1,"description":"Loadbalancer is enabled and on.","name":"On","object":"option"},
+                {"id":2,"description":"Loadbalancer is disabled and off.","name":"Off","object":"option"},
+                {"id":3,"description":"Loadbalancer is enabled, but real ips are unreachable.","name":"Unavailable","object":"option"},
+                {"id":4,"description":"Loadbalancer state is unknown.","name":"Unknown","object":"option"}
+                 */
+                JSONObject s = json.getJSONObject("state");
+
+                if( s.has("id") ) {
+                    int id = s.getInt("id");
+
+                    switch( id ) {
+                        case 1: case 3: state = LoadBalancerState.ACTIVE; break;
+                        case 2: case 4: state = LoadBalancerState.PENDING; break;
+                    }
+                }
+            }
+        }
+        catch( JSONException e ) {
+            logger.error("Failed to parse load balancer JSON from cloud: " + e.getMessage());
+            e.printStackTrace();
+            throw new CloudException(e);
+        }
+        if( loadBalancerId == null ) {
+            return null;
+        }
+        if( state == null ) {
+            state = LoadBalancerState.PENDING;
+        }
+        return new ResourceStatus(loadBalancerId, state);
     }
 
     private @Nullable LoadBalancer toLoadBalancer(@Nullable JSONObject json, @Nullable JSONArray servers) throws CloudException, InternalException {

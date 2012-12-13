@@ -24,10 +24,14 @@ import org.dasein.cloud.InternalException;
 import org.dasein.cloud.OperationNotSupportedException;
 import org.dasein.cloud.ProviderContext;
 import org.dasein.cloud.Requirement;
+import org.dasein.cloud.ResourceStatus;
 import org.dasein.cloud.Tag;
 import org.dasein.cloud.compute.Architecture;
+import org.dasein.cloud.compute.ImageClass;
 import org.dasein.cloud.compute.Platform;
 import org.dasein.cloud.compute.VMLaunchOptions;
+import org.dasein.cloud.compute.VMScalingCapabilities;
+import org.dasein.cloud.compute.VMScalingOptions;
 import org.dasein.cloud.compute.VirtualMachine;
 import org.dasein.cloud.compute.VirtualMachineProduct;
 import org.dasein.cloud.compute.VirtualMachineSupport;
@@ -72,8 +76,18 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     public GoGridServerSupport(GoGrid provider) { this.provider = provider; }
 
     @Override
+    public VirtualMachine alterVirtualMachine(@Nonnull String vmId, @Nonnull VMScalingOptions options) throws InternalException, CloudException {
+        throw new OperationNotSupportedException("Vertical scaling is not currently supported");
+    }
+
+    @Override
     public @Nonnull VirtualMachine clone(@Nonnull String vmId, @Nonnull String intoDcId, @Nonnull String name, @Nonnull String description, boolean powerOn, @Nullable String... firewallIds) throws InternalException, CloudException {
         throw new OperationNotSupportedException("GoGrid does not support server cloning");
+    }
+
+    @Override
+    public @Nullable VMScalingCapabilities describeVerticalScalingCapabilities() throws CloudException, InternalException {
+        return null;
     }
 
     @Override
@@ -89,6 +103,11 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     @Override
     public @Nonnull String getConsoleOutput(@Nonnull String vmId) throws InternalException, CloudException {
         return "";
+    }
+
+    @Override
+    public int getCostFactor(@Nonnull VmState state) throws InternalException, CloudException {
+        return 100;
     }
 
     private @Nonnull ProviderContext getContext() throws CloudException {
@@ -172,6 +191,11 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     }
 
     @Override
+    public @Nonnull Requirement identifyImageRequirement(@Nonnull ImageClass cls) throws CloudException, InternalException {
+        return (cls.equals(ImageClass.MACHINE) ? Requirement.REQUIRED : Requirement.NONE);
+    }
+
+    @Override
     public @Nonnull Requirement identifyPasswordRequirement() throws CloudException, InternalException {
         return Requirement.NONE;
     }
@@ -183,6 +207,11 @@ public class GoGridServerSupport implements VirtualMachineSupport {
 
     @Override
     public @Nonnull Requirement identifyShellKeyRequirement() throws CloudException, InternalException {
+        return Requirement.NONE;
+    }
+
+    @Override
+    public @Nonnull Requirement identifyStaticIPRequirement() throws CloudException, InternalException {
         return Requirement.NONE;
     }
 
@@ -241,10 +270,11 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     static private final Random random = new Random();
 
     @Override
-    public @Nonnull VirtualMachine launch(VMLaunchOptions withLaunchOptions) throws CloudException, InternalException {
+    public @Nonnull VirtualMachine launch(@Nonnull VMLaunchOptions withLaunchOptions) throws CloudException, InternalException {
         GoGridMethod.Param[] params = new GoGridMethod.Param[5];
+        String name = validateName(withLaunchOptions.getHostName());
 
-        params[0] = new GoGridMethod.Param("name", withLaunchOptions.getHostName());
+        params[0] = new GoGridMethod.Param("name", name);
         params[1] = new GoGridMethod.Param("image", withLaunchOptions.getMachineImageId());
         params[2] = new GoGridMethod.Param("server.ram", withLaunchOptions.getStandardProductId());
         //params[3] = new GoGridMethod.Param("datacenter", getRegionId(getContext()));
@@ -291,8 +321,7 @@ public class GoGridServerSupport implements VirtualMachineSupport {
                 logger.debug("size=" + launches.length());
             }
         }
-        String name = null;
-
+        name = null;
         if( launches != null && launches.length() == 1 ) {
             try {
                 JSONObject json = launches.getJSONObject(0);
@@ -424,6 +453,37 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     }
 
     @Override
+    public @Nonnull Iterable<ResourceStatus> listVirtualMachineStatus() throws InternalException, CloudException {
+        ProviderContext ctx = getContext();
+        String regionId = getRegionId(ctx);
+
+        GoGridMethod method = new GoGridMethod(provider);
+
+        JSONArray list = method.get(GoGridMethod.SERVER_LIST, new GoGridMethod.Param("datacenter", regionId));
+
+        if( list == null ) {
+            return Collections.emptyList();
+        }
+        ArrayList<ResourceStatus> servers = new ArrayList<ResourceStatus>();
+
+        for( int i=0; i<list.length(); i++ ) {
+            try {
+                ResourceStatus vm = toStatus(list.getJSONObject(i));
+
+                if( vm != null ) {
+                    servers.add(vm);
+                }
+            }
+            catch( JSONException e ) {
+                logger.error("Failed to parse JSON: " + e.getMessage());
+                e.printStackTrace();
+                throw new CloudException(e);
+            }
+        }
+        return servers;
+    }
+
+    @Override
     public @Nonnull Iterable<VirtualMachine> listVirtualMachines() throws InternalException, CloudException {
         ProviderContext ctx = getContext();
         String regionId = getRegionId(ctx);
@@ -480,6 +540,11 @@ public class GoGridServerSupport implements VirtualMachineSupport {
 
     @Override
     public void stop(@Nonnull String vmId) throws InternalException, CloudException {
+        stop(vmId, false);
+    }
+
+    @Override
+    public void stop(@Nonnull String vmId, /* ignored */ boolean force) throws InternalException, CloudException {
         GoGridMethod method = new GoGridMethod(provider);
 
         method.get(GoGridMethod.SERVER_POWER, new GoGridMethod.Param("id", vmId), new GoGridMethod.Param("power", "stop"));
@@ -531,6 +596,11 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     @Override
     public void unpause(@Nonnull String vmId) throws CloudException, InternalException {
         throw new OperationNotSupportedException("GoGrid does not support pause/unpause.");
+    }
+
+    @Override
+    public void updateTags(@Nonnull String vmId, @Nonnull Tag... tags) throws CloudException, InternalException {
+        // NO-OP
     }
 
     @Override
@@ -758,5 +828,65 @@ public class GoGridServerSupport implements VirtualMachineSupport {
         vm.setClonable(false);
         vm.setImagable(vm.getCurrentState().equals(VmState.STOPPED));
         return vm;
+    }
+
+    private @Nullable ResourceStatus toStatus(@Nullable JSONObject json) throws CloudException, InternalException {
+        if( json == null ) {
+            return null;
+        }
+        try {
+            String id;
+
+            if( json.has("id") ) {
+                id = json.getString("id");
+            }
+            else {
+                return null;
+            }
+            if( json.has("state") ) {
+                JSONObject state = json.getJSONObject("state");
+
+                if( state.has("id") ) {
+                    return new ResourceStatus(id, toState(state.getInt("id")));
+                }
+            }
+            return new ResourceStatus(id, VmState.PENDING);
+        }
+        catch( JSONException e ) {
+            logger.error("Failed to parse JSON from the cloud: " + e.getMessage());
+            e.printStackTrace();
+            throw new CloudException(e);
+        }
+    }
+
+    private boolean exists(@Nonnull String name, @Nonnull Iterable<VirtualMachine> vms) {
+        for( VirtualMachine vm : vms ) {
+            if( vm.getName().equalsIgnoreCase(name) ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private @Nonnull String validateName(@Nonnull String name) throws CloudException, InternalException {
+        Iterable<VirtualMachine> current = listVirtualMachines();
+
+        if( name.length() < 21 && !exists(name, current) ) {
+            return name;
+        }
+        boolean available = true;
+        String base = name;
+
+        if( base.length() > 17 ) {
+            base = base.substring(0, 17);
+        }
+        for( int idx=1; idx<1000; idx++ ) {
+            String tmp = base + idx;
+
+            if( !exists(tmp, current) ) {
+                return tmp;
+            }
+        }
+        throw new CloudException("Invalid virtual machine name: " + name);
     }
 }

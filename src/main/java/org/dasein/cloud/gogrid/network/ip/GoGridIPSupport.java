@@ -23,6 +23,8 @@ import org.dasein.cloud.CloudException;
 import org.dasein.cloud.InternalException;
 import org.dasein.cloud.OperationNotSupportedException;
 import org.dasein.cloud.ProviderContext;
+import org.dasein.cloud.Requirement;
+import org.dasein.cloud.ResourceStatus;
 import org.dasein.cloud.gogrid.GoGrid;
 import org.dasein.cloud.gogrid.GoGridMethod;
 import org.dasein.cloud.identity.ServiceAction;
@@ -103,6 +105,11 @@ public class GoGridIPSupport implements IpAddressSupport {
     @Override
     public @Nonnull String getProviderTermForIpAddress(@Nonnull Locale locale) {
         return "IP Address";
+    }
+
+    @Override
+    public @Nonnull Requirement identifyVlanForVlanIPRequirement() throws CloudException, InternalException {
+        return Requirement.NONE;
     }
 
     @Override
@@ -234,6 +241,45 @@ public class GoGridIPSupport implements IpAddressSupport {
     }
 
     @Override
+    public @Nonnull Iterable<ResourceStatus> listIpPoolStatus(@Nonnull IPVersion version) throws InternalException, CloudException {
+        if( version.equals(IPVersion.IPV4) ) {
+            ProviderContext ctx = getContext();
+            String regionId = getRegionId(ctx);
+
+            GoGridMethod method = new GoGridMethod(provider);
+
+            GoGridMethod.Param[] params = new GoGridMethod.Param[1];
+
+            params[0] = new GoGridMethod.Param("datacenter", regionId);
+            JSONArray list = method.get(GoGridMethod.IP_LIST, params);
+
+            if( list == null ) {
+                return Collections.emptyList();
+            }
+            ArrayList<ResourceStatus> addresses = new ArrayList<ResourceStatus>();
+            JSONArray vmList = method.get(GoGridMethod.SERVER_LIST);
+            JSONArray lbList = method.get(GoGridMethod.LB_LIST);
+
+            for( int i=0; i<list.length(); i++ ) {
+                try {
+                    ResourceStatus ip = toStatus(list.getJSONObject(i), vmList, lbList);
+
+                    if( ip != null ) {
+                        addresses.add(ip);
+                    }
+                }
+                catch( JSONException e ) {
+                    logger.error("Failed to parse JSON: " + e.getMessage());
+                    e.printStackTrace();
+                    throw new CloudException(e);
+                }
+            }
+            return addresses;
+        }
+        return Collections.emptyList();
+    }
+
+    @Override
     public @Nonnull Iterable<IpForwardingRule> listRules(@Nonnull String addressId) throws InternalException, CloudException {
         return Collections.emptyList();
     }
@@ -264,8 +310,13 @@ public class GoGridIPSupport implements IpAddressSupport {
     }
 
     @Override
-    public @Nonnull String requestForVLAN(IPVersion version) throws InternalException, CloudException {
+    public @Nonnull String requestForVLAN(@Nonnull IPVersion version) throws InternalException, CloudException {
         throw new OperationNotSupportedException("Requesting of IP addresses is not supported in GoGrid");
+    }
+
+    @Override
+    public @Nonnull String requestForVLAN(@Nonnull IPVersion version, @Nonnull String vlanId) throws InternalException, CloudException {
+        throw new OperationNotSupportedException("Requesting of IP addresses is not supported");
     }
 
     @Override
@@ -357,5 +408,72 @@ public class GoGridIPSupport implements IpAddressSupport {
             throw new CloudException(e);
         }
         return address;
+    }
+
+    private @Nullable ResourceStatus toStatus(@Nullable JSONObject json, @Nullable JSONArray vmList, @Nullable JSONArray lbList) throws CloudException, InternalException {
+        if( json == null ) {
+            return null;
+        }
+        Boolean available = null;
+        String id;
+
+        try {
+            if( json.has("id") && json.has("ip") ) {
+                id = json.getString("id");
+            }
+            else {
+                return null;
+            }
+            if( json.has("state") ) {
+                JSONObject state = json.getJSONObject("state");
+
+                if( state.has("id") ) {
+                    int s = state.getInt("id");
+
+                    if( s != 1 && (vmList == null || lbList == null) ) {
+                        return null;
+                    }
+                    else if( s == 2 ) {
+                        for( int i =0; i<vmList.length(); i++ ) {
+                            JSONObject vm = vmList.getJSONObject(i);
+
+                            if( !vm.has("id") ) {
+                                continue;
+                            }
+                            if( vm.has("ip") ) {
+                                JSONObject ip = vm.getJSONObject("ip");
+
+                                if( ip.has("id") && ip.getString("id").equals(id) ) {
+                                    available = false;
+                                }
+                            }
+                        }
+                        if( available == null ) {
+                            for( int i=0; i<lbList.length(); i++ ) {
+                                JSONObject lb = lbList.getJSONObject(i);
+
+                                if( !lb.has("id") ) {
+                                    continue;
+                                }
+                                if( lb.has("virtualip.ip") ) {
+                                    JSONObject ip = lb.getJSONObject("virtualip.ip");
+
+
+                                    if( ip.has("id") && ip.getString("id").equals(id) ) {
+                                        available = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return new ResourceStatus(id, available == null || available);
+        }
+        catch( JSONException e ) {
+            logger.error("Failed to parse JSON from the cloud: " + e.getMessage());
+            e.printStackTrace();
+            throw new CloudException(e);
+        }
     }
 }
