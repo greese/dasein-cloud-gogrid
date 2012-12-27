@@ -247,7 +247,7 @@
                 
             </systemProperties>
           <includes>
-            <include>**/GoGridTestSuite.java</include>
+            <!-- <include>**/GoGridTestSuite.java</include> -->
           </includes>
         </configuration>
       </plugin>     

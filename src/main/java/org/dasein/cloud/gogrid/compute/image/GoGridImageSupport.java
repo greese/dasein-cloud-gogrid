@@ -485,7 +485,7 @@ public class GoGridImageSupport implements MachineImageSupport {
 
     @Override
     public @Nonnull Iterable<MachineImageType> listSupportedImageTypes() throws CloudException, InternalException {
-        return Collections.singletonList(MachineImageType.VOLUME);
+        return Collections.singletonList(MachineImageType.STORAGE);
     }
 
     @Override
@@ -721,7 +721,7 @@ public class GoGridImageSupport implements MachineImageSupport {
         String regionId = getRegionId(getContext());
 
         img.setPlatform(Platform.UNKNOWN);
-        img.setType(MachineImageType.VOLUME);
+        img.setType(MachineImageType.STORAGE);
         img.setCurrentState(MachineImageState.PENDING);
         img.setSoftware("");
         img.setProviderRegionId(regionId);
