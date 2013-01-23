@@ -35,6 +35,7 @@ import org.dasein.cloud.network.LbListener;
 import org.dasein.cloud.network.LbProtocol;
 import org.dasein.cloud.network.LoadBalancer;
 import org.dasein.cloud.network.LoadBalancerAddressType;
+import org.dasein.cloud.network.LoadBalancerServer;
 import org.dasein.cloud.network.LoadBalancerState;
 import org.dasein.cloud.network.LoadBalancerSupport;
 import org.dasein.util.CalendarWrapper;
@@ -272,6 +273,16 @@ public class GoGridLBSupport implements LoadBalancerSupport {
             }
         }
         return null;
+    }
+
+    @Override
+    public Iterable<LoadBalancerServer> getLoadBalancerServerHealth(String loadBalancerId) throws CloudException, InternalException {
+        return Collections.emptyList(); // TODO: implement this
+    }
+
+    @Override
+    public Iterable<LoadBalancerServer> getLoadBalancerServerHealth(String loadBalancerId, String... serverIdsToCheck) throws CloudException, InternalException {
+        return Collections.emptyList(); // todo: implement this
     }
 
     @Override
