@@ -244,6 +244,11 @@ public class GoGridImageSupport implements MachineImageSupport {
         return "server image";
     }
 
+    @Override
+    public @Nonnull String getProviderTermForCustomImage(@Nonnull Locale locale, @Nonnull ImageClass cls) {
+        return getProviderTermForImage(locale, cls);
+    }
+
     private @Nonnull String getRegionId(@Nonnull ProviderContext ctx) throws CloudException {
         String regionId = ctx.getRegionId();
 
@@ -495,9 +500,14 @@ public class GoGridImageSupport implements MachineImageSupport {
 
     @Override
     public void remove(@Nonnull String machineImageId) throws CloudException, InternalException {
+        remove(machineImageId, false);
+    }
+
+    @Override
+    public void remove(@Nonnull String providerImageId, boolean checkState) throws CloudException, InternalException {
         GoGridMethod method = new GoGridMethod(provider);
 
-        method.get(GoGridMethod.IMAGE_DELETE, new GoGridMethod.Param("id", machineImageId));
+        method.get(GoGridMethod.IMAGE_DELETE, new GoGridMethod.Param("id", providerImageId));
     }
 
     @Override

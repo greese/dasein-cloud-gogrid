@@ -123,6 +123,11 @@ public class GoGridIPSupport implements IpAddressSupport {
     }
 
     @Override
+    public boolean isAssignablePostLaunch(@Nonnull IPVersion version) throws CloudException, InternalException {
+        return false;
+    }
+
+    @Override
     public boolean isForwarding() {
         return false;
     }
