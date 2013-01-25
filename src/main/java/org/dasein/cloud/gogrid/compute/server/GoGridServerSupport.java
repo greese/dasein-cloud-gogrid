@@ -614,6 +614,21 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     }
 
     @Override
+    public void updateTags(@Nonnull String[] vmIds, @Nonnull Tag... tags) throws CloudException, InternalException {
+        // NO-OP
+    }
+
+    @Override
+    public void removeTags(@Nonnull String vmId, @Nonnull Tag... tags) throws CloudException, InternalException {
+        // NO-OP
+    }
+
+    @Override
+    public void removeTags(@Nonnull String[] vmIds, @Nonnull Tag... tags) throws CloudException, InternalException {
+        // NO-OP
+    }
+
+    @Override
     public @Nonnull String[] mapServiceAction(@Nonnull ServiceAction action) {
         return new String[0];
     }
