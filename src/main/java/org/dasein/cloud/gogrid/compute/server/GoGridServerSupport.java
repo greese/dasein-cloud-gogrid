@@ -21,22 +21,17 @@ package org.dasein.cloud.gogrid.compute.server;
 import org.apache.log4j.Logger;
 import org.dasein.cloud.CloudException;
 import org.dasein.cloud.InternalException;
-import org.dasein.cloud.OperationNotSupportedException;
 import org.dasein.cloud.ProviderContext;
 import org.dasein.cloud.Requirement;
 import org.dasein.cloud.ResourceStatus;
-import org.dasein.cloud.Tag;
+import org.dasein.cloud.compute.AbstractVMSupport;
 import org.dasein.cloud.compute.Architecture;
 import org.dasein.cloud.compute.ImageClass;
 import org.dasein.cloud.compute.Platform;
 import org.dasein.cloud.compute.VMLaunchOptions;
-import org.dasein.cloud.compute.VMScalingCapabilities;
-import org.dasein.cloud.compute.VMScalingOptions;
 import org.dasein.cloud.compute.VirtualMachine;
 import org.dasein.cloud.compute.VirtualMachineProduct;
-import org.dasein.cloud.compute.VirtualMachineSupport;
 import org.dasein.cloud.compute.VmState;
-import org.dasein.cloud.compute.VmStatistics;
 import org.dasein.cloud.gogrid.GoGrid;
 import org.dasein.cloud.gogrid.GoGridMethod;
 import org.dasein.cloud.identity.ServiceAction;
@@ -50,7 +45,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -68,55 +62,14 @@ import java.util.Random;
  * @version 2012.09 initial version
  * @since 2012.09
  */
-public class GoGridServerSupport implements VirtualMachineSupport {
+public class GoGridServerSupport extends AbstractVMSupport {
     static private final Logger logger = GoGrid.getLogger(GoGridServerSupport.class);
 
     private GoGrid provider;
 
-    public GoGridServerSupport(GoGrid provider) { this.provider = provider; }
-
-    @Override
-    public VirtualMachine alterVirtualMachine(@Nonnull String vmId, @Nonnull VMScalingOptions options) throws InternalException, CloudException {
-        throw new OperationNotSupportedException("Vertical scaling is not currently supported");
-    }
-
-    @Override
-    public @Nonnull VirtualMachine clone(@Nonnull String vmId, @Nonnull String intoDcId, @Nonnull String name, @Nonnull String description, boolean powerOn, @Nullable String... firewallIds) throws InternalException, CloudException {
-        throw new OperationNotSupportedException("GoGrid does not support server cloning");
-    }
-
-    @Override
-    public @Nullable VMScalingCapabilities describeVerticalScalingCapabilities() throws CloudException, InternalException {
-        return null;
-    }
-
-    @Override
-    public void disableAnalytics(String vmId) throws InternalException, CloudException {
-        // NO-OP
-    }
-
-    @Override
-    public void enableAnalytics(String vmId) throws InternalException, CloudException {
-        // NO-OP
-    }
-
-    @Override
-    public @Nonnull String getConsoleOutput(@Nonnull String vmId) throws InternalException, CloudException {
-        return "";
-    }
-
-    @Override
-    public int getCostFactor(@Nonnull VmState state) throws InternalException, CloudException {
-        return 100;
-    }
-
-    private @Nonnull ProviderContext getContext() throws CloudException {
-        ProviderContext ctx = provider.getContext();
-
-        if( ctx == null ) {
-            throw new CloudException("No context was provided for this request");
-        }
-        return ctx;
+    public GoGridServerSupport(GoGrid provider) {
+        super(provider);
+        this.provider = provider;
     }
 
     private @Nonnull String getRegionId(@Nonnull ProviderContext ctx) throws CloudException {
@@ -126,26 +79,6 @@ public class GoGridServerSupport implements VirtualMachineSupport {
             throw new CloudException("No region was provided for this request");
         }
         return regionId;
-    }
-
-    @Override
-    public int getMaximumVirtualMachineCount() throws CloudException, InternalException {
-        return -2;
-    }
-
-    @Override
-    public VirtualMachineProduct getProduct(@Nonnull String productId) throws InternalException, CloudException {
-        for( VirtualMachineProduct product : listProducts(Architecture.I64) ) {
-            if( productId.equals(product.getProviderProductId()) ) {
-                return product;
-            }
-        }
-        for( VirtualMachineProduct product : listProducts(Architecture.I32) ) {
-            if( productId.equals(product.getProviderProductId()) ) {
-                return product;
-            }
-        }
-        return null;
     }
 
     @Override
@@ -181,23 +114,8 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     }
 
     @Override
-    public VmStatistics getVMStatistics(String vmId, long from, long to) throws InternalException, CloudException {
-        return null;
-    }
-
-    @Override
-    public @Nonnull Iterable<VmStatistics> getVMStatisticsForPeriod(@Nonnull String vmId, @Nonnegative long from, @Nonnegative long to) throws InternalException, CloudException {
-        return Collections.emptyList();
-    }
-
-    @Override
     public @Nonnull Requirement identifyImageRequirement(@Nonnull ImageClass cls) throws CloudException, InternalException {
         return (cls.equals(ImageClass.MACHINE) ? Requirement.REQUIRED : Requirement.NONE);
-    }
-
-    @Override
-    public @Nonnull Requirement identifyPasswordRequirement() throws CloudException, InternalException {
-        return Requirement.NONE;
     }
 
     @Override
@@ -207,11 +125,6 @@ public class GoGridServerSupport implements VirtualMachineSupport {
 
     @Override
     public @Nonnull Requirement identifyRootVolumeRequirement() throws CloudException, InternalException {
-        return Requirement.NONE;
-    }
-
-    @Override
-    public @Nonnull Requirement identifyShellKeyRequirement() throws CloudException, InternalException {
         return Requirement.NONE;
     }
 
@@ -374,18 +287,6 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     }
 
     @Override
-    @Deprecated
-    public @Nonnull VirtualMachine launch(@Nonnull String fromMachineImageId, @Nonnull VirtualMachineProduct product, @Nonnull String dataCenterId, @Nonnull String name, @Nonnull String description, @Nullable String withKeypairId, @Nullable String inVlanId, boolean withAnalytics, boolean asSandbox, @Nullable String... firewallIds) throws InternalException, CloudException {
-        return launch(VMLaunchOptions.getInstance(product.getProviderProductId(), fromMachineImageId, name, description));
-    }
-
-    @Override
-    @Deprecated
-    public @Nonnull VirtualMachine launch(@Nonnull String fromMachineImageId, @Nonnull VirtualMachineProduct product, @Nonnull String dataCenterId, @Nonnull String name, @Nonnull String description, @Nullable String withKeypairId, @Nullable String inVlanId, boolean withAnalytics, boolean asSandbox, @Nullable String[] firewallIds, @Nullable Tag... tags) throws InternalException, CloudException {
-        return launch(VMLaunchOptions.getInstance(product.getProviderProductId(), fromMachineImageId, name, description));
-    }
-
-    @Override
     public @Nonnull Iterable<String> listFirewalls(@Nonnull String vmId) throws InternalException, CloudException {
         return Collections.emptyList();
     }
@@ -446,20 +347,6 @@ public class GoGridServerSupport implements VirtualMachineSupport {
             productCache = pm;
         }
         return products;
-    }
-
-    static private Collection<Architecture> architectures;
-
-    @Override
-    public Iterable<Architecture> listSupportedArchitectures() throws InternalException, CloudException {
-        if( architectures == null ) {
-            ArrayList<Architecture> tmp = new ArrayList<Architecture>();
-
-            tmp.add(Architecture.I32);
-            tmp.add(Architecture.I64);
-            architectures = Collections.unmodifiableList(tmp);
-        }
-        return architectures;
     }
 
     @Override
@@ -525,20 +412,10 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     }
 
     @Override
-    public void pause(@Nonnull String vmId) throws InternalException, CloudException {
-        throw new OperationNotSupportedException("GoGrid does not support pause/unpause.");
-    }
-
-    @Override
     public void reboot(@Nonnull String vmId) throws CloudException, InternalException {
         GoGridMethod method = new GoGridMethod(provider);
 
         method.get(GoGridMethod.SERVER_POWER, new GoGridMethod.Param("id", vmId), new GoGridMethod.Param("power", "restart"));
-    }
-
-    @Override
-    public void resume(@Nonnull String vmId) throws CloudException, InternalException {
-        throw new OperationNotSupportedException("GoGrid does not support suspend/resume.");
     }
 
     @Override
@@ -549,11 +426,6 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     }
 
     @Override
-    public void stop(@Nonnull String vmId) throws InternalException, CloudException {
-        stop(vmId, false);
-    }
-
-    @Override
     public void stop(@Nonnull String vmId, /* ignored */ boolean force) throws InternalException, CloudException {
         GoGridMethod method = new GoGridMethod(provider);
 
@@ -561,28 +433,8 @@ public class GoGridServerSupport implements VirtualMachineSupport {
     }
 
     @Override
-    public boolean supportsAnalytics() throws CloudException, InternalException {
-        return false;
-    }
-
-    @Override
-    public boolean supportsPauseUnpause(@Nonnull VirtualMachine vm) {
-        return false;
-    }
-
-    @Override
     public boolean supportsStartStop(@Nonnull VirtualMachine vm) {
         return true;
-    }
-
-    @Override
-    public boolean supportsSuspendResume(@Nonnull VirtualMachine vm) {
-        return false;
-    }
-
-    @Override
-    public void suspend(@Nonnull String vmId) throws CloudException, InternalException {
-        throw new OperationNotSupportedException("GoGrid does not support suspend/resume.");
     }
 
     @Override
@@ -601,31 +453,6 @@ public class GoGridServerSupport implements VirtualMachineSupport {
             try { Thread.sleep(15000L); }
             catch( InterruptedException ignore ) { }
         }
-    }
-
-    @Override
-    public void unpause(@Nonnull String vmId) throws CloudException, InternalException {
-        throw new OperationNotSupportedException("GoGrid does not support pause/unpause.");
-    }
-
-    @Override
-    public void updateTags(@Nonnull String vmId, @Nonnull Tag... tags) throws CloudException, InternalException {
-        // NO-OP
-    }
-
-    @Override
-    public void updateTags(@Nonnull String[] vmIds, @Nonnull Tag... tags) throws CloudException, InternalException {
-        // NO-OP
-    }
-
-    @Override
-    public void removeTags(@Nonnull String vmId, @Nonnull Tag... tags) throws CloudException, InternalException {
-        // NO-OP
-    }
-
-    @Override
-    public void removeTags(@Nonnull String[] vmIds, @Nonnull Tag... tags) throws CloudException, InternalException {
-        // NO-OP
     }
 
     @Override
