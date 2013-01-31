@@ -65,15 +65,6 @@ public class GoGridImageSupport extends AbstractImageSupport {
         this.provider = provider;
     }
 
-    private @Nonnull ProviderContext getContext() throws CloudException {
-        ProviderContext ctx = provider.getContext();
-
-        if( ctx == null ) {
-            throw new CloudException("No context was provided for this request");
-        }
-        return ctx;
-    }
-
     @Override
     public void addPublicShare(@Nonnull String providerImageId) throws CloudException, InternalException {
         GoGridMethod method = new GoGridMethod(provider);
