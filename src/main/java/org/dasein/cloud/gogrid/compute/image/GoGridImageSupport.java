@@ -264,14 +264,16 @@ public class GoGridImageSupport extends AbstractImageSupport {
             try {
                 MachineImage img = toImage(list.getJSONObject(i));
 
-                if( account == null ) {
-                    if( img != null && !img.getProviderOwnerId().equals("--gogrid--") ) {
-                        images.add(img);
+                if( img != null ) {
+                    if( account == null && !img.getProviderOwnerId().equals("--gogrid--") ) {
+                        if( options == null || options.matches(img) ) {
+                            images.add(img);
+                        }
                     }
-                }
-                else {
-                    if( img != null && account.equals(img.getProviderOwnerId()) ) {
-                        images.add(img);
+                    else if( account != null && account.equals(img.getProviderOwnerId()) ) {
+                        if( options.matches(img) ) {
+                            images.add(img);
+                        }
                     }
                 }
             }
@@ -325,7 +327,7 @@ public class GoGridImageSupport extends AbstractImageSupport {
     }
 
     @Override
-    public @Nonnull Iterable<MachineImage> searchImages(@Nullable String accountNumber, @Nullable String keyword, @Nullable Platform platform, @Nullable Architecture architecture, @Nullable ImageClass... imageClasses) throws CloudException, InternalException {
+    public @Nonnull Iterable<MachineImage> searchPublicImages(@Nonnull ImageFilterOptions options) throws CloudException, InternalException {
         ProviderContext ctx = getContext();
         String regionId = getRegionId(ctx);
 
@@ -342,108 +344,8 @@ public class GoGridImageSupport extends AbstractImageSupport {
             try {
                 MachineImage img = toImage(list.getJSONObject(i));
 
-                if( img != null ) {
-                    String ownerId = img.getProviderOwnerId();
-
-                    if( (accountNumber == null && !ownerId.equals("--gogrid--")) || (accountNumber != null && accountNumber.equals(ownerId)) ) {
-                        if( keyword != null ) {
-                            if( !img.getName().toLowerCase().contains(keyword) && !img.getDescription().toLowerCase().contains(keyword) ) {
-                                continue;
-                            }
-                        }
-                        if( platform != null && !platform.equals(Platform.UNKNOWN) ) {
-                            Platform mine = img.getPlatform();
-
-                            if( platform.isWindows() && !mine.isWindows() ) {
-                                continue;
-                            }
-                            if( platform.isUnix() && !mine.isUnix() ) {
-                                continue;
-                            }
-                            if( platform.isBsd() && !mine.isBsd() ) {
-                                continue;
-                            }
-                            if( platform.isLinux() && !mine.isLinux() ) {
-                                continue;
-                            }
-                            if( platform.equals(Platform.UNIX) ) {
-                                if( !mine.isUnix() ) {
-                                    continue;
-                                }
-                            }
-                            else if( !platform.equals(mine) ) {
-                                continue;
-                            }
-                        }
-                        if( architecture != null && !img.getArchitecture().equals(architecture) ) {
-                            continue;
-                        }
-                        images.add(img);
-                    }
-                }
-            }
-            catch( JSONException e ) {
-                logger.error("Failed to parse JSON: " + e.getMessage());
-                e.printStackTrace();
-                throw new CloudException(e);
-            }
-        }
-        return images;
-    }
-
-    @Override
-    public @Nonnull Iterable<MachineImage> searchPublicImages(@Nullable String keyword, @Nullable Platform platform, @Nullable Architecture architecture, @Nullable ImageClass... imageClasses) throws CloudException, InternalException {
-        ProviderContext ctx = getContext();
-        String regionId = getRegionId(ctx);
-
-        GoGridMethod method = new GoGridMethod(provider);
-
-        JSONArray list = method.get(GoGridMethod.IMAGE_LIST, new GoGridMethod.Param("datacenter", regionId));
-
-        if( list == null ) {
-            return Collections.emptyList();
-        }
-        ArrayList<MachineImage> images = new ArrayList<MachineImage>();
-
-        for( int i=0; i<list.length(); i++ ) {
-            try {
-                MachineImage img = toImage(list.getJSONObject(i));
-
-                if( img != null ) {
-                    if( keyword != null ) {
-                        if( !img.getName().toLowerCase().contains(keyword) && !img.getDescription().toLowerCase().contains(keyword) ) {
-                            continue;
-                        }
-                    }
-                    if( platform != null && !platform.equals(Platform.UNKNOWN) ) {
-                        Platform mine = img.getPlatform();
-
-                        if( platform.isWindows() && !mine.isWindows() ) {
-                            continue;
-                        }
-                        if( platform.isUnix() && !mine.isUnix() ) {
-                            continue;
-                        }
-                        if( platform.isBsd() && !mine.isBsd() ) {
-                            continue;
-                        }
-                        if( platform.isLinux() && !mine.isLinux() ) {
-                            continue;
-                        }
-                        if( platform.equals(Platform.UNIX) ) {
-                            if( !mine.isUnix() ) {
-                                continue;
-                            }
-                        }
-                        else if( !platform.equals(mine) ) {
-                            continue;
-                        }
-                    }
-                    if( architecture != null && !img.getArchitecture().equals(architecture) ) {
-                        continue;
-                    }
+                if( img != null && options.matches(img) ) {
                     images.add(img);
-
                 }
             }
             catch( JSONException e ) {
@@ -518,12 +420,11 @@ public class GoGridImageSupport extends AbstractImageSupport {
                     }
                 }
             }
-            /*
             if( json.has("createdTime") ) {
                 long ts = json.getLong("createdTime") * 1000L;
-                // TODO: implement this when Dasein supports it
+
+                img.setCreationTimestamp(ts);
             }
-            */
             if( json.has("os") ) {
                 JSONObject os = json.getJSONObject("os");
                 StringBuilder str = new StringBuilder();
