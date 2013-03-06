@@ -295,27 +295,26 @@ public class GoGridServerSupport implements VirtualMachineSupport {
         for( IpAddress address : provider.getNetworkServices().getIpAddressSupport().listIpPool(IPVersion.IPV4, true) ) {
             if( address.getAddressType().equals(AddressType.PUBLIC) ) {
                 target = address;
-                if( random.nextInt(10) == 4 ) { // try to avoid conflict between two simultaneous calls
-                    break;
-                }
-            }
-            else if( target == null ) {
-                target = address;
+                break;
             }
         }
         if( target == null ) {
             logger.error("Could not identify an available IP address for launch");
             throw new CloudException("Unable to identify an available IP address");
         }
-        if( logger.isDebugEnabled() ) {
-            logger.debug("IP address for launch: " + target.getAddress());
-        }
-        if( target.getAddressType().equals(AddressType.PRIVATE) ) {
-            params[4] = new GoGridMethod.Param("privateip", target.getProviderIpAddressId());
-        }
         else {
-            params[4] = new GoGridMethod.Param("ip", target.getProviderIpAddressId());
+        	params[4] = new GoGridMethod.Param("ip", target.getRawAddress().getIpAddress());
         }
+        if( logger.isDebugEnabled() ) {
+            logger.debug("IP address for launch: " + target.getRawAddress().getIpAddress());
+        }
+        
+        //TODO: Add support for specifying a private IP
+        /*
+        if( target.getAddressType().equals(AddressType.PRIVATE) ) {
+            params[4] = new GoGridMethod.Param("privateip", target.getRawAddress().getIpAddress());
+        }
+        */
 
         GoGridMethod method = new GoGridMethod(provider);
 
