@@ -737,6 +737,9 @@ public class GoGridImageSupport implements MachineImageSupport {
         img.setProviderRegionId(regionId);
         img.setImageClass(ImageClass.MACHINE);
         try {
+            if( json.has("friendlyName") ) {
+                img.setName(json.getString("friendlyName"));
+            }
             if( json.has("id") ) {
                 img.setProviderMachineImageId(json.getString("id"));
             }
