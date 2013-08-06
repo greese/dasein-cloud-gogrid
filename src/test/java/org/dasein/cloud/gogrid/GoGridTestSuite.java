@@ -18,21 +18,7 @@
 
 package org.dasein.cloud.gogrid;
 
-import junit.framework.Test;
+import org.dasein.cloud.test.GlobalTestSuite;
 
-import org.dasein.cloud.test.ComprehensiveTestSuite;
-import org.dasein.cloud.test.TestConfigurationException;
-
-/**
- * Implements the junit integration tests so that Dasein Cloud can verify this implementation of the Dasein
- * Cloud API as it integrates with GoGrod.
- * <p>Created by George Reese: 10/13/12 1:41 PM</p>
- * @author George Reese
- * @version 2012.09 initial version
- * @since 2012.09
- */
-public class GoGridTestSuite {
-    static public Test suite() throws TestConfigurationException {
-        return new ComprehensiveTestSuite(GoGrid.class);
-    }
+public class GoGridTestSuite extends GlobalTestSuite {
 }
