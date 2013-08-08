@@ -254,9 +254,9 @@
                 </property>
                 
             </systemProperties>
-          <includes>
-            <include>**/GoGridTestSuite.java</include>
-          </includes>
+          <excludes>
+            <exclude>**/GoGridTestSuite.java</exclude>
+          </excludes>
         </configuration>
       </plugin>     
       <plugin>
