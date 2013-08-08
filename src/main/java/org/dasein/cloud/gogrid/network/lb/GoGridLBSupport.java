@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2012 enStratus Networks Inc
+ * Copyright (C) 2012-2013 enStratus Networks Inc
  *
  * ====================================================================
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,15 +28,7 @@ import org.dasein.cloud.compute.VirtualMachine;
 import org.dasein.cloud.gogrid.GoGrid;
 import org.dasein.cloud.gogrid.GoGridMethod;
 import org.dasein.cloud.identity.ServiceAction;
-import org.dasein.cloud.network.IPVersion;
-import org.dasein.cloud.network.IpAddress;
-import org.dasein.cloud.network.LbAlgorithm;
-import org.dasein.cloud.network.LbListener;
-import org.dasein.cloud.network.LbProtocol;
-import org.dasein.cloud.network.LoadBalancer;
-import org.dasein.cloud.network.LoadBalancerAddressType;
-import org.dasein.cloud.network.LoadBalancerState;
-import org.dasein.cloud.network.LoadBalancerSupport;
+import org.dasein.cloud.network.*;
 import org.dasein.util.CalendarWrapper;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -59,12 +51,15 @@ import java.util.TreeSet;
  * @version 2012.09 initial version
  * @since 2012.09
  */
-public class GoGridLBSupport implements LoadBalancerSupport {
+public class GoGridLBSupport extends AbstractLoadBalancerSupport<GoGrid> {
     static private final Logger logger = GoGrid.getLogger(GoGridLBSupport.class);
 
     private GoGrid provider;
 
-    public GoGridLBSupport(GoGrid provider) { this.provider = provider; }
+    public GoGridLBSupport(GoGrid provider) {
+        super(provider);
+        this.provider = provider;
+    }
 
     @Override
     public void addDataCenters(String toLoadBalancerId, String... dataCenterIdsToAdd) throws CloudException, InternalException {
@@ -275,11 +270,21 @@ public class GoGridLBSupport implements LoadBalancerSupport {
     }
 
     @Override
+    public Iterable<LoadBalancerServer> getLoadBalancerServerHealth(String loadBalancerId) throws CloudException, InternalException {
+        return Collections.emptyList(); // TODO: implement this
+    }
+
+    @Override
+    public Iterable<LoadBalancerServer> getLoadBalancerServerHealth(String loadBalancerId, String... serverIdsToCheck) throws CloudException, InternalException {
+        return Collections.emptyList(); // todo: implement this
+    }
+
+    @Override
     public LoadBalancerAddressType getAddressType() throws CloudException, InternalException {
         return LoadBalancerAddressType.IP;
     }
 
-    private @Nonnull ProviderContext getContext() throws CloudException {
+    protected  @Nonnull ProviderContext getContext() throws CloudException {
         ProviderContext ctx = provider.getContext();
 
         if( ctx == null ) {
@@ -371,16 +376,6 @@ public class GoGridLBSupport implements LoadBalancerSupport {
     @Override
     public boolean isDataCenterLimited() throws CloudException, InternalException {
         return false;
-    }
-
-    @Override
-    public boolean requiresListenerOnCreate() throws CloudException, InternalException {
-        return true;
-    }
-
-    @Override
-    public boolean requiresServerOnCreate() throws CloudException, InternalException {
-        return true;
     }
 
     @Override
