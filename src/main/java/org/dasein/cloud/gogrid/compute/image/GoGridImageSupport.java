@@ -24,17 +24,16 @@ import org.dasein.cloud.CloudException;
 import org.dasein.cloud.InternalException;
 import org.dasein.cloud.ProviderContext;
 import org.dasein.cloud.ResourceStatus;
+import org.dasein.cloud.compute.ImageCapabilities;
 import org.dasein.cloud.compute.AbstractImageSupport;
 import org.dasein.cloud.compute.Architecture;
 import org.dasein.cloud.compute.ImageClass;
 import org.dasein.cloud.compute.ImageCreateOptions;
 import org.dasein.cloud.compute.ImageFilterOptions;
 import org.dasein.cloud.compute.MachineImage;
-import org.dasein.cloud.compute.MachineImageFormat;
 import org.dasein.cloud.compute.MachineImageState;
 import org.dasein.cloud.compute.MachineImageType;
 import org.dasein.cloud.compute.Platform;
-
 import org.dasein.cloud.gogrid.GoGrid;
 import org.dasein.cloud.gogrid.GoGridMethod;
 import org.dasein.cloud.identity.ServiceAction;
@@ -70,6 +69,15 @@ public class GoGridImageSupport extends AbstractImageSupport {
         GoGridMethod method = new GoGridMethod(provider);
 
         method.get(GoGridMethod.IMAGE_EDIT, new GoGridMethod.Param("id", providerImageId), new GoGridMethod.Param("isPublic", "true"));
+    }
+
+    private transient volatile TemplateCapabilities capabilities;
+    @Override
+    public ImageCapabilities getCapabilities() throws CloudException, InternalException {
+        if( capabilities == null ) {
+            capabilities = new TemplateCapabilities(provider);
+        }
+        return capabilities;
     }
 
     @Override
@@ -287,26 +295,6 @@ public class GoGridImageSupport extends AbstractImageSupport {
     }
 
     @Override
-    public @Nonnull Iterable<MachineImageFormat> listSupportedFormats() throws CloudException, InternalException {
-        return Collections.emptyList();
-    }
-
-    @Override
-    public @Nonnull Iterable<MachineImageFormat> listSupportedFormatsForBundling() throws CloudException, InternalException {
-        return Collections.emptyList();
-    }
-
-    @Override
-    public @Nonnull Iterable<ImageClass> listSupportedImageClasses() throws CloudException, InternalException {
-        return Collections.singletonList(ImageClass.MACHINE);
-    }
-
-    @Override
-    public @Nonnull Iterable<MachineImageType> listSupportedImageTypes() throws CloudException, InternalException {
-        return Collections.singletonList(MachineImageType.VOLUME);
-    }
-
-    @Override
     public void remove(@Nonnull String providerImageId, boolean checkState) throws CloudException, InternalException {
         GoGridMethod method = new GoGridMethod(provider);
 
@@ -360,31 +348,6 @@ public class GoGridImageSupport extends AbstractImageSupport {
     @Override
     public boolean supportsCustomImages() {
         return true;
-    }
-
-    @Override
-    public boolean supportsDirectImageUpload() throws CloudException, InternalException {
-        return false;
-    }
-
-    @Override
-    public boolean supportsImageCapture(@Nonnull MachineImageType type) throws CloudException, InternalException {
-        return type.equals(MachineImageType.VOLUME);
-    }
-
-    @Override
-    public boolean supportsImageSharing() {
-        return false;
-    }
-
-    @Override
-    public boolean supportsImageSharingWithPublic() {
-        return true;
-    }
-
-    @Override
-    public boolean supportsPublicLibrary(@Nonnull ImageClass cls) throws CloudException, InternalException {
-        return cls.equals(ImageClass.MACHINE);
     }
 
     @Override

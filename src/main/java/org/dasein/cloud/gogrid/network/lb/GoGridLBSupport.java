@@ -125,7 +125,7 @@ public class GoGridLBSupport extends AbstractLoadBalancerSupport<GoGrid> {
     }
 
     @Override
-    public String create(String name, String description, String addressId, String[] dataCenterIds, LbListener[] listeners, String[] serverIds) throws CloudException, InternalException {
+    public String create(String name, String description, String addressId, String[] dataCenterIds, LbListener[] listeners, String[] serverIds, String[] subnetIds, LbType type) throws CloudException, InternalException {
         IpAddress address = provider.getNetworkServices().getIpAddressSupport().getIpAddress(addressId);
 
         if( address == null ) {
@@ -282,6 +282,16 @@ public class GoGridLBSupport extends AbstractLoadBalancerSupport<GoGrid> {
     @Override
     public LoadBalancerAddressType getAddressType() throws CloudException, InternalException {
         return LoadBalancerAddressType.IP;
+    }
+
+    private transient volatile LBCapabilities capabilities;
+    @Nonnull
+    @Override
+    public LoadBalancerCapabilities getCapabilities() throws CloudException, InternalException {
+        if( capabilities == null ) {
+            capabilities = new LBCapabilities(provider);
+        }
+        return capabilities;
     }
 
     protected  @Nonnull ProviderContext getContext() throws CloudException {

@@ -22,14 +22,13 @@ import org.apache.log4j.Logger;
 import org.dasein.cloud.CloudException;
 import org.dasein.cloud.InternalException;
 import org.dasein.cloud.ProviderContext;
-import org.dasein.cloud.Requirement;
 import org.dasein.cloud.ResourceStatus;
 import org.dasein.cloud.compute.AbstractVMSupport;
 import org.dasein.cloud.compute.Architecture;
-import org.dasein.cloud.compute.ImageClass;
 import org.dasein.cloud.compute.Platform;
 import org.dasein.cloud.compute.VMLaunchOptions;
 import org.dasein.cloud.compute.VirtualMachine;
+import org.dasein.cloud.compute.VirtualMachineCapabilities;
 import org.dasein.cloud.compute.VirtualMachineProduct;
 import org.dasein.cloud.compute.VmState;
 import org.dasein.cloud.gogrid.GoGrid;
@@ -81,9 +80,14 @@ public class GoGridServerSupport extends AbstractVMSupport {
         return regionId;
     }
 
+    private transient volatile ServerCapabilities capabilities;
+    @Nonnull
     @Override
-    public @Nonnull String getProviderTermForServer(@Nonnull Locale locale) {
-        return "server";
+    public VirtualMachineCapabilities getCapabilities() throws InternalException, CloudException {
+        if( capabilities == null ) {
+            capabilities = new ServerCapabilities(provider);
+        }
+        return capabilities;
     }
 
     @Override
@@ -114,51 +118,6 @@ public class GoGridServerSupport extends AbstractVMSupport {
     }
 
     @Override
-    public @Nonnull Requirement identifyImageRequirement(@Nonnull ImageClass cls) throws CloudException, InternalException {
-        return (cls.equals(ImageClass.MACHINE) ? Requirement.REQUIRED : Requirement.NONE);
-    }
-
-    @Override
-    public @Nonnull Requirement identifyPasswordRequirement(Platform platform) throws CloudException, InternalException {
-        return Requirement.NONE;
-    }
-
-    @Override
-    public @Nonnull Requirement identifyRootVolumeRequirement() throws CloudException, InternalException {
-        return Requirement.NONE;
-    }
-
-    @Override
-    public @Nonnull Requirement identifyShellKeyRequirement(Platform platform) throws CloudException, InternalException {
-        return Requirement.NONE;
-    }
-
-    @Override
-    public @Nonnull Requirement identifyStaticIPRequirement() throws CloudException, InternalException {
-        return Requirement.NONE;
-    }
-
-    @Override
-    public @Nonnull Requirement identifyVlanRequirement() throws CloudException, InternalException {
-        return Requirement.NONE;
-    }
-
-    @Override
-    public boolean isAPITerminationPreventable() throws CloudException, InternalException {
-        return false;
-    }
-
-    @Override
-    public boolean isBasicAnalyticsSupported() throws CloudException, InternalException {
-        return false;
-    }
-
-    @Override
-    public boolean isExtendedAnalyticsSupported() throws CloudException, InternalException {
-        return false;
-    }
-
-    @Override
     public boolean isSubscribed() throws CloudException, InternalException {
         GoGridMethod method = new GoGridMethod(provider);
         String regionId = getRegionId(getContext());
@@ -182,11 +141,6 @@ public class GoGridServerSupport extends AbstractVMSupport {
                 throw new CloudException(e);
             }
         }
-        return false;
-    }
-
-    @Override
-    public boolean isUserDataSupported() throws CloudException, InternalException {
         return false;
     }
 
@@ -430,11 +384,6 @@ public class GoGridServerSupport extends AbstractVMSupport {
         GoGridMethod method = new GoGridMethod(provider);
 
         method.get(GoGridMethod.SERVER_POWER, new GoGridMethod.Param("id", vmId), new GoGridMethod.Param("power", "stop"));
-    }
-
-    @Override
-    public boolean supportsStartStop(@Nonnull VirtualMachine vm) {
-        return true;
     }
 
     @Override
